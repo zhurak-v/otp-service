@@ -69,6 +69,23 @@ public abstract class MemoryRepository<ID extends Serializable, E extends Entity
             return previous;
         }
 
+        @Override
+        public E putIfAbsent(final ID key, final E value) {
+            final E previous = this.indices.putIfAbsent(key, value);
+            if (previous == null) {
+                this.sequences.computeIfAbsent(key, this::register);
+                if (!this.indices.containsKey(key)) {
+                    this.unregister(key);
+                }
+            }
+            return previous;
+        }
+
+        @Override
+        public E replace(final ID key, final E value) {
+            return this.indices.replace(key, value);
+        }
+
         private Long register(final ID key) {
             final long next = this.sequence.incrementAndGet();
             this.order.put(next, key);

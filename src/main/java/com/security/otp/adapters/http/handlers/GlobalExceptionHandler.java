@@ -6,20 +6,24 @@ import com.security.otp.core.exceptions.expired.ExpiredOtpException;
 import com.security.otp.core.exceptions.internal.InternalException;
 import com.security.otp.core.exceptions.not_found.NotFoundException;
 import jakarta.validation.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     public GlobalExceptionHandler() {}
 
@@ -32,53 +36,38 @@ public class GlobalExceptionHandler {
             default -> HttpStatus.BAD_REQUEST;
         };
 
-        return this.buildResponse(
-                status,
-                ex.getCode(),
-                ex.getMessage(),
-                null
-        );
+        return this.buildResponse(status, ex.getCode(), ex.getMessage(), null);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidationExceptions(final MethodArgumentNotValidException ex) {
-        final Map<String, String> errors = new HashMap<>();
+        final Map<String, String> errors = new LinkedHashMap<>();
         for (final FieldError error : ex.getBindingResult().getFieldErrors()) {
-            errors.put(error.getField(), error.getDefaultMessage());
+            errors.merge(error.getField(), String.valueOf(error.getDefaultMessage()), (a, b) -> a + "; " + b);
         }
 
-        return this.buildResponse(
-                HttpStatus.BAD_REQUEST,
-                "VALIDATION_ERROR",
-                "Validation failed",
-                errors
-        );
+        return this.buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Validation failed", errors);
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<Map<String, Object>> handleConstraintViolationException(final ConstraintViolationException ex) {
-        return this.buildResponse(
-                HttpStatus.BAD_REQUEST,
-                "VALIDATION_ERROR",
-                ex.getMessage(),
-                null
-        );
+        return this.buildResponse(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMalformedRequest(final HttpMessageNotReadableException ex) {
+        return this.buildResponse(HttpStatus.BAD_REQUEST, "MALFORMED_REQUEST", "Malformed request body", null);
     }
 
     @ExceptionHandler({InternalException.class, Exception.class})
     public ResponseEntity<Map<String, Object>> handleInternalException(final Exception ex) {
+        LOGGER.error("Unhandled exception", ex);
 
-        final String message = ex.getMessage() != null
-                && !(ex instanceof InternalException)
-                    ? InternalException.MESSAGE
-                    : Objects.requireNonNullElse(ex.getMessage(), InternalException.MESSAGE);
+        final String message = ex instanceof InternalException && ex.getMessage() != null
+                ? ex.getMessage()
+                : InternalException.MESSAGE;
 
-        return this.buildResponse(
-                HttpStatus.INTERNAL_SERVER_ERROR,
-                InternalException.CODE,
-                message,
-                null
-        );
+        return this.buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, InternalException.CODE, message, null);
     }
 
     private ResponseEntity<Map<String, Object>> buildResponse(
@@ -87,7 +76,7 @@ public class GlobalExceptionHandler {
             final String message,
             final Object errors
     ) {
-        final Map<String, Object> body = new HashMap<>();
+        final Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", Instant.now().toString());
         body.put("status", status.value());
         body.put("error", status.getReasonPhrase());

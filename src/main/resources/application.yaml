@@ -4,3 +4,9 @@ spring:
   threads:
     virtual:
       enabled: true
+
+server:
+  port: 8080
+
+otp:
+  hash-secret: secret

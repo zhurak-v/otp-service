@@ -1,37 +1,131 @@
 # OTP Service
 
-A lightweight, secure, and high-performance microservice designed for generating, managing, and validating One-Time Passwords (OTPs). Built using modern architecture principles and fast in-memory storage, it provides an out-of-the-box security layer for any application requiring user verification.
+Spring Boot microservice for creating, verifying and revoking one-time passwords. Codes are stored as keyed hashes, expire after a configurable lifetime, and are destroyed after too many failed attempts or one successful verification.
 
----
+The service generates the code and returns it to the caller. Delivering the code to the user (SMS, email, messenger) is the caller's job.
 
-## 🚀 Key Functionality & Features
+## Features
 
-* **Secure Code Generation:** Instantly creates unique temporary verification codes with customizable expiration times (lifetimes).
-* **Cryptographic Hashing:** Passwords are never stored in plain text. The service uses secure hashing algorithms to guarantee that even internal data access cannot expose raw codes.
-* **Attempt Tracking & Rate Limiting:** Protects against brute-force attacks by limiting the number of allowed verification attempts. If a user exceeds the limit, the token is instantly invalidated and destroyed.
-* **Automated Expiry & Cleanup:** Expired codes are automatically purged from memory by a background worker, ensuring optimal resource usage and preventing data clutter.
-* **Instant In-Memory Performance:** Operates entirely in memory for lightning-fast response times, eliminating heavy database bottlenecks for short-lived verification tokens.
+- Cryptographically secure code generation (`SecureRandom`), configurable length and alphabet (digits, letters or both)
+- Per-OTP lifetime and attempt limit
+- Codes stored as HMAC-SHA256 hashes, compared in constant time
+- Single use: a token is deleted after successful verification
+- A token is deleted when its attempts run out or when it is found expired
+- Per-id locking shared by the API and the cleaner, so concurrent verify requests cannot bypass the attempt limit (single instance)
+- Background cleanup of expired tokens every 10 seconds, in batches
 
----
+## Requirements
 
-## 💡 Where and Why It Is Useful (Use Cases)
+- Java 25
+- Maven (wrapper included)
 
-This service can be easily i[pom.xml](pom.xml)ntegrated as an independent module or microservice into various systems where identity confirmation or transaction security is critical:
+## Run
 
-1. **Two-Factor Authentication (2FA):**
-    * *Scenario:* When a user logs into a web dashboard or mobile app, the system generates a secondary verification code sent via SMS, email, or a messenger. The OTP service securely handles the creation, attempt limits, and validation of this code.
-2. **Financial Transactions & E-commerce Checkouts:**
-    * *Scenario:* Before a user transfers money, changes billing details, or confirms a high-value purchase in an online store, the platform requires a confirmation code. The service ensures the code is single-use, expires quickly, and locks out attackers after multiple failed tries.
-3. **Password Resets & Account Recovery:**
-    * *Scenario:* When a user forgets their password, they request a reset link or code. The OTP service generates a temporary, highly secure token that becomes invalid immediately after use or after a short time window.
-4. **Contact Verification (Email / Phone Number):**
-    * *Scenario:* During user registration, platforms often require confirming that an email or phone number belongs to the user. This service manages the short-lived verification codes entered during the signup flow.
+```bash
+./mvnw spring-boot:run
+```
 
----
+The service starts on `http://localhost:<port>`.
 
-## 🔌 API Overview
+## Configuration
 
-The service exposes a clean and straightforward REST API:
-* **Create OTP:** Generates a new verification token with specific security rules and returns the code.
-* **Verify OTP:** Validates the user's input against the stored token, automatically clearing successful or exhausted tokens.
-* **Delete OTP:** Manually revokes or clears a token when needed.
+| Property | Default | Description |
+|---|---|---|
+| `otp.hash-secret` | random per start | Secret key for HMAC hashing of codes. Set it explicitly if hashes must survive a restart |
+| `server.port` | `8080` | HTTP port (Spring Boot default; override in `application.yml`) |
+
+## API
+
+Base path: `/otp`
+
+### Create OTP
+
+`POST /otp/create` → `201 Created`
+
+```json
+{
+  "id": "login:user-42",
+  "lifetime": "PT5M",
+  "attempts": 3,
+  "generateCodeReq": {
+    "length": 6,
+    "characterTypes": ["DIGITS"]
+  }
+}
+```
+
+| Field | Constraints |
+|---|---|
+| `id` | Not blank, up to 128 characters, unique among active OTPs |
+| `lifetime` | ISO-8601 duration from `PT1S` to `PT24H` |
+| `attempts` | 1 to 10 |
+| `generateCodeReq.length` | 1 to 32 |
+| `generateCodeReq.characterTypes` | Non-empty set of `DIGITS`, `LETTERS` |
+
+Response:
+
+```json
+{ "password": "483920" }
+```
+
+### Verify OTP
+
+`POST /otp/verify` → `200 OK`
+
+```json
+{ "id": "login:user-42", "password": "483920" }
+```
+
+Response:
+
+```json
+{ "verified": true, "attempts": 3 }
+```
+
+- Correct code: `verified: true`, the token is deleted.
+- Wrong code: `verified: false` and the number of remaining attempts. When the last attempt is used, `attempts` is `0` and the token is deleted.
+
+### Delete OTP
+
+`DELETE /otp/delete/{id}` → `204 No Content`
+
+## Errors
+
+All errors share one format:
+
+```json
+{
+  "timestamp": "2026-10-10T12:00:00Z",
+  "status": 404,
+  "error": "Not Found",
+  "code": "<error code>",
+  "message": "OTP not found",
+  "errors": { "field": "validation message" }
+}
+```
+
+`errors` is present only for validation failures.
+
+| Status | Cause |
+|---|---|
+| 400 | Validation failed, malformed JSON, or the OTP is expired |
+| 404 | No OTP with this `id` (never created, deleted, used up or cleaned) |
+| 409 | An OTP with this `id` already exists |
+| 500 | Unexpected server error |
+
+## Limitations
+
+- Storage is in memory: tokens are lost on restart and the service cannot be scaled horizontally. Locking is per JVM.
+- The number of active OTPs is not capped, so an exposed `create` endpoint can exhaust memory.
+- The create response contains the plain code, so the service must only be reachable by trusted backend clients. There is no built-in authentication.
+- Attempt limiting applies to verification only. There is no rate limit on creating OTPs.
+
+## Tests
+
+```bash
+./mvnw test
+```
+
+## License
+
+Apache-2.0

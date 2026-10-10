@@ -3,6 +3,8 @@ package com.security.otp.adapters.http.controllers;
 import com.security.otp.adapters.http.handlers.OtpHandler;
 import com.security.otp.core.dtos.otp.*;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -29,7 +31,7 @@ public class OtpController {
 
     @DeleteMapping(value = "/delete/{id}")
     public ResponseEntity<Void> deleteOtp(
-            @Valid @PathVariable("id") final String id
+            @PathVariable("id") @NotBlank @Size(max = 128) final String id
     ) {
         return this.otpHandler.deleteOtp(new DeleteOtpReq(id));
     }
