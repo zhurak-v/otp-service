@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: otp-service
+  threads:
+    virtual:
+      enabled: true
