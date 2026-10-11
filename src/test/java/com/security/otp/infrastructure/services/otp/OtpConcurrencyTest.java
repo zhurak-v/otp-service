@@ -10,7 +10,7 @@ import com.security.otp.core.exceptions.not_found.NotFoundException;
 import com.security.otp.infrastructure.repositories.MemoryOptRepositoryReader;
 import com.security.otp.infrastructure.repositories.MemoryOptRepositoryWriter;
 import com.security.otp.infrastructure.services.generator.SecureCodeGenerator;
-import com.security.otp.infrastructure.services.hasher.HmacSha256Hasher;
+import com.security.otp.infrastructure.services.hasher.BCryptHasher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -41,7 +41,7 @@ class OtpConcurrencyTest {
                 new MemoryOptRepositoryReader(),
                 new MemoryOptRepositoryWriter(),
                 new SecureCodeGenerator(new SecureRandom()),
-                new HmacSha256Hasher("test-secret"),
+                new BCryptHasher(),
                 new OtpLocks()
         );
     }

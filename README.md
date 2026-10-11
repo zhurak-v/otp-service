@@ -18,6 +18,7 @@ The service generates the code and returns it to the caller. Delivering the code
 
 - Java 25
 - Maven (wrapper included)
+- Docker with the Compose plugin (only for running in a container)
 
 ## Run
 
@@ -25,7 +26,48 @@ The service generates the code and returns it to the caller. Delivering the code
 ./mvnw spring-boot:run
 ```
 
-The service starts on `http://localhost:<port>`.
+The service starts on `http://localhost:<port>`. To run it in a container instead, see [Docker](#docker).
+
+## Docker
+
+The image is built in two stages: Maven builds the jar, and only the JRE with the jar goes into the final image. The container runs as a non-root user with a read-only filesystem.
+
+Dependencies are cached in two ways: `pom.xml` is copied before `src`, so the dependency layer is rebuilt only when `pom.xml` changes, and a BuildKit cache mount keeps `~/.m2` between builds.
+
+```bash
+./scripts/run.sh
+```
+
+Pass extra `docker compose up` arguments through the script, for example to run in the background:
+
+```bash
+./scripts/run.sh -d
+```
+
+Equivalent command without the script:
+
+```bash
+docker compose -f docker/docker-compose.yml up --build
+```
+
+The service is available at `http://localhost:8080`. Stop it with `Ctrl+C`, or `docker compose -f docker/docker-compose.yml down` if it runs in the background.
+
+Docker files:
+
+| Path | Purpose |
+|---|---|
+| `docker/Dockerfile` | Multi-stage build with dependency caching |
+| `docker/Dockerfile.dockerignore` | Files excluded from the build context |
+| `docker/docker-compose.yml` | Service definition, build context is the project root |
+| `scripts/run.sh` | Builds and starts the container from any directory |
+
+Container settings are passed as environment variables in `docker/docker-compose.yml`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `SERVER_PORT` | `8080` | HTTP port inside the container. If you change it, update `ports` as well |
+| `JAVA_OPTS` | `-XX:MaxRAMPercentage=75` | JVM options |
+| `OTP_HASH_SECRET` | not set | Maps to `otp.hash-secret`. Add it under `environment` if hashes must survive a restart |
 
 ## Configuration
 
