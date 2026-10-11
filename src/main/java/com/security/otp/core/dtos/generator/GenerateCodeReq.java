@@ -10,13 +10,15 @@ import java.util.Set;
 
 public record GenerateCodeReq(
         @JsonProperty("length")
-        @Min(1) @Max(32) int length,
+        @NotNull @Min(1) @Max(32) Integer length,
 
         @JsonProperty("characterTypes")
-        @NotNull @NotEmpty Set<CharacterType> characterTypes
+        @NotEmpty Set<@NotNull CharacterType> characterTypes
 ) {
+
     public enum CharacterType {
         DIGITS,
         LETTERS
     }
+
 }

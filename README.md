@@ -1,6 +1,6 @@
 # OTP Service
 
-Spring Boot microservice for creating, verifying and revoking one-time passwords. Codes are stored as keyed hashes, expire after a configurable lifetime, and are destroyed after too many failed attempts or one successful verification.
+Spring Boot microservice for creating, verifying and revoking one-time passwords. Codes are stored as bcrypt hashes, expire after a configurable lifetime, and are destroyed after too many failed attempts or one successful verification.
 
 The service generates the code and returns it to the caller. Delivering the code to the user (SMS, email, messenger) is the caller's job.
 
@@ -8,7 +8,8 @@ The service generates the code and returns it to the caller. Delivering the code
 
 - Cryptographically secure code generation (`SecureRandom`), configurable length and alphabet (digits, letters or both)
 - Per-OTP lifetime and attempt limit
-- Codes stored as HMAC-SHA256 hashes, compared in constant time
+- Codes are masked in `toString()` of request and response objects, so they do not leak into logs
+- Codes stored as salted bcrypt hashes (Spring Security `BCryptPasswordEncoder`, cost factor 12), never in plain text. The code is Base64-encoded before hashing
 - Single use: a token is deleted after successful verification
 - A token is deleted when its attempts run out or when it is found expired
 - Per-id locking shared by the API and the cleaner, so concurrent verify requests cannot bypass the attempt limit (single instance)
@@ -67,14 +68,14 @@ Container settings are passed as environment variables in `docker/docker-compose
 |---|---|---|
 | `SERVER_PORT` | `8080` | HTTP port inside the container. If you change it, update `ports` as well |
 | `JAVA_OPTS` | `-XX:MaxRAMPercentage=75` | JVM options |
-| `OTP_HASH_SECRET` | not set | Maps to `otp.hash-secret`. Add it under `environment` if hashes must survive a restart |
 
 ## Configuration
 
 | Property | Default | Description |
 |---|---|---|
-| `otp.hash-secret` | random per start | Secret key for HMAC hashing of codes. Set it explicitly if hashes must survive a restart |
 | `server.port` | `8080` | HTTP port (Spring Boot default; override in `application.yml`) |
+
+The bcrypt cost factor is fixed at 12 in `BCryptHasher` and is not configurable.
 
 ## API
 
@@ -100,9 +101,9 @@ Base path: `/otp`
 |---|---|
 | `id` | Not blank, up to 128 characters, unique among active OTPs |
 | `lifetime` | ISO-8601 duration from `PT1S` to `PT24H` |
-| `attempts` | 1 to 10 |
-| `generateCodeReq.length` | 1 to 32 |
-| `generateCodeReq.characterTypes` | Non-empty set of `DIGITS`, `LETTERS` |
+| `attempts` | Required, 1 to 10 |
+| `generateCodeReq.length` | Required, 1 to 32 |
+| `generateCodeReq.characterTypes` | Non-empty set of `DIGITS`, `LETTERS`, no `null` elements |
 
 Response:
 
@@ -118,6 +119,11 @@ Response:
 { "id": "login:user-42", "password": "483920" }
 ```
 
+| Field | Constraints |
+|---|---|
+| `id` | Not blank, up to 128 characters |
+| `password` | Not blank, up to 32 characters |
+
 Response:
 
 ```json
@@ -130,6 +136,8 @@ Response:
 ### Delete OTP
 
 `DELETE /otp/delete/{id}` → `204 No Content`
+
+`id` is not blank and up to 128 characters.
 
 ## Errors
 
@@ -161,6 +169,7 @@ All errors share one format:
 - The number of active OTPs is not capped, so an exposed `create` endpoint can exhaust memory.
 - The create response contains the plain code, so the service must only be reachable by trusted backend clients. There is no built-in authentication.
 - Attempt limiting applies to verification only. There is no rate limit on creating OTPs.
+- bcrypt with cost 12 makes every create and verify request CPU-intensive, which adds to the cost of unthrottled traffic.
 
 ## Tests
 

@@ -21,7 +21,7 @@ public record CreateOtpReq(
         @NotNull Duration lifetime,
 
         @JsonProperty("attempts")
-        @Min(1) @Max(10) int attempts,
+        @NotNull @Min(1) @Max(10) Integer attempts,
 
         @JsonProperty("generateCodeReq")
         @NotNull @Valid GenerateCodeReq generateCodeReq

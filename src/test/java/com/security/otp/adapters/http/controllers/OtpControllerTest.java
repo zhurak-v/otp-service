@@ -395,9 +395,70 @@ class OtpControllerTest {
     void verifyRejectsTooLongPassword() throws Exception {
         this.mockMvc.perform(post("/otp/verify")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{ \"id\": \"user-1\", \"password\": \"" + "9".repeat(129) + "\" }"))
+                        .content("{ \"id\": \"user-1\", \"password\": \"" + "9".repeat(33) + "\" }"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.password").exists());
+
+        verifyNoInteractions(this.otpHandler);
+    }
+
+    @Test
+    void verifyAcceptsMaxLengthPassword() throws Exception {
+        when(this.otpHandler.verifyOtp(any(VerifyOtpReq.class)))
+                .thenReturn(ResponseEntity.ok(new VerifyOtpRes(false, 2)));
+
+        this.mockMvc.perform(post("/otp/verify")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{ \"id\": \"user-1\", \"password\": \"" + "9".repeat(32) + "\" }"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void createRejectsMissingAttempts() throws Exception {
+        final String body = """
+                {
+                  "id": "user-1",
+                  "lifetime": "PT5M",
+                  "generateCodeReq": { "length": 6, "characterTypes": ["DIGITS"] }
+                }
+                """;
+
+        this.mockMvc.perform(post("/otp/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.attempts").exists());
+
+        verifyNoInteractions(this.otpHandler);
+    }
+
+    @Test
+    void createRejectsMissingCodeLength() throws Exception {
+        final String body = """
+                {
+                  "id": "user-1",
+                  "lifetime": "PT5M",
+                  "attempts": 3,
+                  "generateCodeReq": { "characterTypes": ["DIGITS"] }
+                }
+                """;
+
+        this.mockMvc.perform(post("/otp/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors['generateCodeReq.length']").exists());
+
+        verifyNoInteractions(this.otpHandler);
+    }
+
+    @Test
+    void createRejectsNullCharacterType() throws Exception {
+        this.mockMvc.perform(post("/otp/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_CREATE_BODY.replace("[\"DIGITS\"]", "[null]")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
 
         verifyNoInteractions(this.otpHandler);
     }

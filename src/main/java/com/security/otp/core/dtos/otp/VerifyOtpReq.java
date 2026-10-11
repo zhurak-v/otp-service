@@ -9,5 +9,12 @@ public record VerifyOtpReq(
         @NotBlank @Size(max = 128) String id,
 
         @JsonProperty("password")
-        @NotBlank @Size(max = 128) String password
-) {}
+        @NotBlank @Size(max = 32) String password
+) {
+
+        @Override
+        public String toString() {
+                return "VerifyOtpReq[id=" + this.id + ", password=***]";
+        }
+
+}
